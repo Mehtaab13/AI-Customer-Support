@@ -79,15 +79,16 @@ export default function Home() {
       flexDirection="column"
       justifyContent="center"
       alignItems="center"
-      bgcolor="white"
+      bgcolor="#222222"
     >
       <Stack
         direction="column"
         width="500px"
         height="700px"
-        border="1px solid black"
+        border="1px solid silver"
         p={2}
         spacing={3}
+        bgcolor="black"
       >
         <Stack
           direction="column"
@@ -132,6 +133,25 @@ export default function Home() {
             onChange={(e) => setMessage(e.target.value)}
             onKeyPress={handleKeyPress}
             disabled={isLoading}
+            sx={{
+              '& .MuiInputBase-root': {
+                color: 'silver',
+              },
+              '& .MuiInputLabel-root': {
+                color: 'silver',
+              },
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': {
+                  borderColor: 'silver',
+                },
+                '&:hover fieldset': {
+                  borderColor: 'silver',
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: 'silver',
+                },
+              },
+            }}
           />
           <Button
             variant="contained"
