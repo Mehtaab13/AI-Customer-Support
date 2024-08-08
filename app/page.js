@@ -152,7 +152,7 @@ export default function Home() {
                 },
               },
               '&.Mui-focused .MuiInputBase-input': {
-                color: 'silver',  // Text color when focused
+                color: 'silver', 
               },
             }}
           />
