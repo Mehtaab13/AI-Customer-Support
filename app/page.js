@@ -151,6 +151,9 @@ export default function Home() {
                   borderColor: 'silver',
                 },
               },
+              '&.Mui-focused .MuiInputBase-input': {
+                color: 'silver',  // Text color when focused
+              },
             }}
           />
           <Button
