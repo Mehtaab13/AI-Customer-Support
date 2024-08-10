@@ -1,28 +1,81 @@
-'use client'
-import { Box, Button, Stack, TextField } from "@mui/material"
-import { useState } from "react"
+'use client';
+import { Box, Button, Stack, TextField, Typography, useMediaQuery } from "@mui/material";
+import { useTheme } from '@mui/material/styles';
+import { useState, useEffect } from "react";
+import { firestore } from '@/firebase';
+import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "firebase/auth";
+import { collection, deleteDoc, doc, getDocs, query, getDoc, setDoc } from 'firebase/firestore';
+import { auth } from '../firebase';
 
 export default function Home() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: "Hi, I'm the support agent, how can I assist you?",
+      content: "Hi, I'm the support agent, how can I assist you? (If you want to save your messages, please sign in)",
     }
-  ])
+  ]);
 
-  const [message, setMessage] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
+  const [message, setMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUser(user);
+        const docRef = doc(firestore, "chats", user.uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setMessages(docSnap.data().messages);
+        } else {
+          console.log("No chat history found");
+        }
+      } else {
+        setUser(null);
+        setMessages([
+          {
+            role: 'assistant',
+            content: "Hi, I'm the support agent, how can I assist you? (If you want to save your messages, please sign in)",
+          }
+        ]);
+      }
+    });
+  
+    return () => unsubscribe();
+  }, []);
+
+  const handleGoogle = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error("Error signing in with Google:", error);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
+  };
 
   const sendMessage = async () => {
     if (!message.trim() || isLoading) return;
-    setIsLoading(true)
-
-    setMessage('')
-    setMessages((messages) => [
+    setIsLoading(true);
+  
+    const newMessages = [
       ...messages,
       { role: 'user', content: message },
       { role: 'assistant', content: '' },
-    ])
+    ];
+  
+    setMessage('');
+    setMessages(newMessages);
   
     try {
       const response = await fetch('/api/chat', {
@@ -30,65 +83,118 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify([...messages, { role: 'user', content: message }]),
-      })
+        body: JSON.stringify(newMessages),
+      });
   
       if (!response.ok) {
-        throw new Error('Network response was not ok')
+        throw new Error('Network response was not ok');
       }
   
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let finalMessages = [...newMessages];
   
       while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const text = decoder.decode(value, { stream: true })
-        setMessages((messages) => {
-          let lastMessage = messages[messages.length - 1]
-          let otherMessages = messages.slice(0, messages.length - 1)
-          return [
-            ...otherMessages,
-            { ...lastMessage, content: lastMessage.content + text },
-          ]
-        })
+        const { done, value } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value, { stream: true });
+        finalMessages = finalMessages.map((msg, index) => {
+          if (index === finalMessages.length - 1) {
+            return { ...msg, content: msg.content + text };
+          }
+          return msg;
+        });
+  
+        setMessages(finalMessages);
       }
+  
+      if (user) {
+        const docRef = doc(firestore, "chats", user.uid);
+        await setDoc(docRef, { messages: finalMessages });
+      }
+  
     } catch (error) {
-      console.error('Error:', error)
-      setMessages((messages) => [
-        ...messages,
+      console.error('Error:', error);
+      setMessages([
+        ...newMessages,
         { role: 'assistant', content: "I'm sorry, but I encountered an error. Please try again later." },
-      ])
+      ]);
     }
-
-    setIsLoading(false)
-  }
+  
+    setIsLoading(false);
+  };
 
   const handleKeyPress = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      sendMessage()
+      event.preventDefault();
+      sendMessage();
     }
-  }
+  };
 
-  return(
+  return (
     <Box
       width="100vw"
       height="100vh"
       display="flex"
-      flexDirection="column"
+      flexDirection={isMobile ? "column" : "row"}
       justifyContent="center"
       alignItems="center"
       bgcolor="#222222"
+      position="relative"
     >
+      {/* Left Side - Customer Support Label */}
+      <Box
+        position="fixed"
+        top={16}
+        left={16}
+        display={isMobile ? "none" : "flex"}
+        flexDirection="column"
+        alignItems="center"
+        color="white"
+        zIndex={2} // Added zIndex to keep it on top
+      >
+        <Typography variant="h4" color="primary.main">
+          Customer Support
+        </Typography>
+      </Box>
+
+      {/* Sign In Button and User Info */}
+      <Box
+        position="fixed"
+        top={16}
+        right={16}
+        display="flex"
+        alignItems="center"
+        gap={2}
+        zIndex={2} // Added zIndex to keep it on top
+      >
+        {user && (
+          <Typography color="white">
+            Hello, {user.displayName || user.email}!
+          </Typography>
+        )}
+        {user ? (
+          <Button variant="contained" color="secondary" onClick={handleSignOut}>
+            Sign Out
+          </Button>
+        ) : (
+          <Button variant="contained" color="primary" onClick={handleGoogle}>
+            Sign In
+          </Button>
+        )}
+      </Box>
+
       <Stack
         direction="column"
-        width="500px"
-        height="700px"
+        width={isMobile ? "90vw" : "500px"}
+        height={isMobile ? "70vh" : "700px"}
+        maxWidth={isMobile ? "100vw" : "90vw"} // Added max width for desktop screens
+        maxHeight={isMobile ? "85vh" : "85vh"} // Added max height for desktop screens
         border="1px solid silver"
         p={2}
         spacing={3}
         bgcolor="black"
+        zIndex={1} // Ensure chat box is below the fixed elements
       >
         <Stack
           direction="column"
@@ -97,35 +203,38 @@ export default function Home() {
           overflow="auto"
           maxHeight="100%"
         >
-          {
-            messages.map((message, index) => (
-              <Box 
-                key = {index}
-                display = 'flex'
-                justifyContent={
-                  message.role === 'assistant' ? 'flex-start' : 'flex-end'
-                }
-              >
-                <Box
-                  bgcolor={
-                    message.role === 'assistant'
+          {messages.map((message, index) => (
+            <Box
+              key={index}
+              display="flex"
+              justifyContent={
+                message.role === 'assistant' ? 'flex-start' : 'flex-end'
+              }
+            >
+              <Box
+                bgcolor={
+                  message.role === 'assistant'
                     ? 'primary.main'
                     : 'secondary.main'
-                  }
-                  color="white"
-                  borderRadius={16}
-                  p={3}
-                >
-                  {message.content}
-                </Box>
+                }
+                color="white"
+                borderRadius={16}
+                p={3}
+                maxWidth="90%"
+                alignSelf={message.role === 'assistant' ? 'flex-start' : 'flex-end'}
+                sx={{
+                  lineHeight: '1.6',
+                  wordBreak: 'break-word',
+                  whiteSpace: 'pre-line',
+                  padding: message.role === 'assistant' ? '24px 24px' : '16px 16px',
+                }}
+              >
+                {message.content}
               </Box>
-            ))
-          }
+            </Box>
+          ))}
         </Stack>
-        <Stack
-          direction="row"
-          spacing={2}
-        >
+        <Stack direction="row" spacing={2}>
           <TextField
             label="Message"
             fullWidth
@@ -152,7 +261,7 @@ export default function Home() {
                 },
               },
               '&.Mui-focused .MuiInputBase-input': {
-                color: 'silver', 
+                color: 'silver',
               },
             }}
           />
@@ -166,5 +275,5 @@ export default function Home() {
         </Stack>
       </Stack>
     </Box>
-  )
+  );
 }
